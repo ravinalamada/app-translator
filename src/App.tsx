@@ -68,7 +68,7 @@ export default function AppTranslator() {
       fd.append("file", audioBlob, "recording.webm");
       fd.append("sourceLang", sourceLang);
 
-      const res = await fetch("http://localhost:4000/api/transcribe", {
+      const res = await fetch("/api/transcribe", {
         method: "POST",
         body: fd,
       });
@@ -96,7 +96,7 @@ export default function AppTranslator() {
     try {
       setLoadingTranslate(true);
       const body = { q, source: sourceLang, target: targetLang };
-      const res = await fetch("http://localhost:4000/api/translate", {
+      const res = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

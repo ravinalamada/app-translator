@@ -1,0 +1,23 @@
+# Ignore session files
+backend/db/sessions/
+backend/node_modules
+backend/venv
+backend/*.wav
+# Node dependencies for frontend (if separate)
+node_modules/
+
+# Build output
+build/
+dist/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Editor / IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+.DS_Store
