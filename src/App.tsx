@@ -68,7 +68,7 @@ export default function AppTranslator() {
       fd.append("file", audioBlob, "recording.webm");
       fd.append("sourceLang", sourceLang);
 
-      const res = await fetch("/api/transcribe", {
+      const res = await fetch("http://localhost:3000/api/transcribe", {
         method: "POST",
         body: fd,
       });
@@ -92,14 +92,19 @@ export default function AppTranslator() {
   const handleTranslate = async (textParam?: string) => {
     const q = textParam ?? inputText;
     if (!q || q.trim().length === 0) return;
-
+    setLoadingTranslate(true);
     try {
-      setLoadingTranslate(true);
-      const body = { q, source: sourceLang, target: targetLang };
-      const res = await fetch("/api/translate", {
+      const res = await fetch("https://libretranslate-ptas.onrender.com/translate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          q: q,
+          source: sourceLang,
+          target: targetLang,
+          format: "text",
+          alternatives: 3,
+          api_key: ""
+        }),
+        headers: { "Content-Type": "application/json" }
       });
       if (!res.ok) throw new Error("Translate request failed");
       const data = await res.json();

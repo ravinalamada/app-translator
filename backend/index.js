@@ -3,7 +3,6 @@ const multer = require('multer');
 const path = require('path');
 const { execFile, exec } = require('child_process');
 const fs = require('fs');
-const fetch = require('node-fetch');
 const cors = require('cors');
 
 const app = express();
@@ -12,9 +11,6 @@ app.use(express.json());
 
 const upload = multer({ dest: path.join(__dirname, 'uploads') });
 
-const LIBRE_URL = 'http://127.0.0.1:5000/translate';
-
-// --- ffmpeg helper ---
 function convertToWav(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
     const cmd = `ffmpeg -y -i ${JSON.stringify(inputPath)} -ac 1 -ar 16000 ${JSON.stringify(outputPath)}`;
@@ -79,39 +75,5 @@ app.get("/last-audio", (req, res) => {
   }
 });
 
-// --- Translate API ---
-app.post('/api/translate', async (req, res) => {
-  try {
-    const { q, source, target } = req.body;
-    if (!q || !target) return res.status(400).json({ error: 'missing fields' });
-
-    const payload = {
-      q,
-      source: source === 'auto' ? '' : source,
-      target,
-      format: 'text'
-    };
-
-    const response = await fetch(LIBRE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('libre translate error', response.status, text);
-      return res.status(500).json({ error: 'translation failed' });
-    }
-
-    const json = await response.json();
-    const translatedText = json.translatedText ?? json.translated_text ?? json.result ?? json;
-    res.json({ translatedText });
-  } catch (err) {
-    console.error('translate error', err);
-    res.status(500).json({ error: 'translation error' });
-  }
-});
-
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
