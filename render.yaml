@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: libretranslate
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: LT_PORT
+        value: "5000"
+      - key: LT_HOST
+        value: "0.0.0.0"
+      - key: LT_DEBUG
+        value: "true"
