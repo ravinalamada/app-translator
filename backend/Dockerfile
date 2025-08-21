@@ -1,28 +1,28 @@
-# --- Base image with Node and Python ---
-FROM python:3.11-slim-bullseye
+# Base image: Node with Debian (includes npm & node)
+FROM node:18-bullseye
 
-# --- Install ffmpeg and build tools ---
+# Install Python and ffmpeg
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
     ffmpeg \
-    build-essential \
-    git \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# --- Set working directory ---
+# Set working directory
 WORKDIR /app
 
-# --- Copy Node files ---
+# Copy package.json and install Node deps
 COPY package*.json ./
 RUN npm install
 
+# Copy the rest of the app
 COPY . .
 
-# --- Install Python dependencies ---
-RUN pip install --no-cache-dir openai-whisper
+# Install Python Whisper
+RUN pip3 install --no-cache-dir openai-whisper
 
-# --- Expose the port ---
+# Expose port (Render uses $PORT)
 EXPOSE 5000
 
-# --- Start Node server ---
-CMD ["node", "index.js"]
+# Start server
+CMD ["npm", "start"]
