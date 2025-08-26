@@ -1,6 +1,7 @@
 # Ignore session files
 backend/db/sessions/
 backend/node_modules
+backend/uploads
 backend/venv
 backend/*.wav
 # Node dependencies for frontend (if separate)

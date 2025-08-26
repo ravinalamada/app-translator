@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {faArrowRightArrowLeft, faVolumeHigh, faMicrophone, faCopy} from "@fortawesome/free-solid-svg-icons";
+import { faArrowRightArrowLeft, faVolumeHigh, faMicrophone, faCopy } from "@fortawesome/free-solid-svg-icons";
 import clsx from "clsx";
+import { WaveFile } from "wavefile";
+import axios  from "axios";
 
 type Lang = { code: string; name: string };
 
@@ -13,16 +15,16 @@ const LANGUAGES: Lang[] = [
   { code: "zh", name: "Chinese" },
   { code: "ja", name: "Japanese" },
   { code: "ar", name: "Arabic" },
-  // add more as needed
 ];
 
 export default function AppTranslator() {
-  const [sourceLang, setSourceLang] = useState<string>("en");
-  const [targetLang, setTargetLang] = useState<string>("fr");
-  const [inputText, setInputText] = useState<string>("");
-  const [translatedText, setTranslatedText] = useState<string>("");
+  const [sourceLang, setSourceLang] = useState("en");
+  const [targetLang, setTargetLang] = useState("fr");
+  const [inputText, setInputText] = useState("");
+  const [translatedText, setTranslatedText] = useState("");
   const [recording, setRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [loadingTranscribe, setLoadingTranscribe] = useState(false);
   const [loadingTranslate, setLoadingTranslate] = useState(false);
@@ -32,7 +34,7 @@ export default function AppTranslator() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: "audio/webm" }); // safe for most browsers
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (e: BlobEvent) => {
@@ -40,8 +42,13 @@ export default function AppTranslator() {
       };
 
       mediaRecorderRef.current.onstop = async () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        await uploadAndTranscribe(blob);
+        // Combine recorded chunks into webm blob
+        const webmBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        // Convert webm → wav
+        const wavBlob = await convertToWav(webmBlob);
+        const url = URL.createObjectURL(wavBlob);
+        setAudioUrl(url);
+        await uploadAndTranscribe(wavBlob);
       };
 
       mediaRecorderRef.current.start();
@@ -59,16 +66,32 @@ export default function AppTranslator() {
     }
   };
 
+  // --- Convert webm/ogg → wav ---
+  const convertToWav = async (blob: Blob): Promise<Blob> => {
+  const arrayBuffer = await blob.arrayBuffer();
+
+  // Use browser's AudioContext for decoding
+  const audioCtx = new AudioContext();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+  // Take the first channel (mono)
+  const channelData = audioBuffer.getChannelData(0);
+  const wav = new WaveFile();
+  wav.fromScratch(1, audioBuffer.sampleRate, "32f", channelData);
+
+  const wavBuffer = wav.toBuffer();
+  return new Blob([wavBuffer], { type: "audio/wav" });
+};
+
   // --- Upload audio and transcribe ---
   const uploadAndTranscribe = async (audioBlob: Blob) => {
     try {
-      console.log(audioBlob)
       setLoadingTranscribe(true);
       const fd = new FormData();
-      fd.append("file", audioBlob, "recording.webm");
+      fd.append("audio", audioBlob, "recording.wav"); // 👈 WAV now
       fd.append("sourceLang", sourceLang);
 
-      const res = await fetch("http://localhost:3000/api/transcribe", {
+      const res = await fetch("http://localhost:5000/api/transcribe", {
         method: "POST",
         body: fd,
       });
@@ -76,77 +99,67 @@ export default function AppTranslator() {
       if (!res.ok) throw new Error("Transcription failed");
       const data = await res.json();
       const text = data.text || "";
+      console.log(text);
       setInputText(text);
 
-      // automatically translate after transcribe
-      if (text.trim().length > 0) await handleTranslate(text);
+      // if (text.trim().length > 0) await handleTranslate(text);
     } catch (err) {
       console.error(err);
-      alert("Transcription error");
     } finally {
       setLoadingTranscribe(false);
     }
   };
 
-  // --- Translate ---
-  const handleTranslate = async (textParam?: string) => {
-    const q = textParam ?? inputText;
-    if (!q || q.trim().length === 0) return;
+  async function handleTranslate() {
     setLoadingTranslate(true);
+    const options = {
+      method: 'POST',
+      url: 'https://deep-translate1.p.rapidapi.com/language/translate/v2',
+      headers: {
+        'x-rapidapi-key': '3b32a7b98emshc3d0253ff577b0ap1862f2jsn40d854776284',
+        'x-rapidapi-host': 'deep-translate1.p.rapidapi.com',
+        'Content-Type': 'application/json'
+      },
+      data: {
+        q: inputText,
+        source: sourceLang,
+        target: targetLang
+      }
+    };
+
     try {
-      const res = await fetch("https://libretranslate-ptas.onrender.com/translate", {
-        method: "POST",
-        body: JSON.stringify({
-          q: q,
-          source: sourceLang,
-          target: targetLang,
-          format: "text",
-          alternatives: 3,
-          api_key: ""
-        }),
-        headers: { "Content-Type": "application/json" }
-      });
-      if (!res.ok) throw new Error("Translate request failed");
-      const data = await res.json();
-      setTranslatedText(data.translatedText ?? "");
-    } catch (err) {
-      console.error(err);
-      alert("Translate error");
+      const {data} = await axios.request(options);
+      const { data: translationsData } = data || {};
+      const { translations } = translationsData || {};
+      setTranslatedText(translations?.translatedText?.[0]);
+    } catch (error) {
+      console.error(error);
     } finally {
-      setLoadingTranslate(false);
-    }
-  };
+        setLoadingTranslate(false);
+      }
+  }
 
   const speakTranslation = (text: string) => {
     if (!text) return;
     const utter = new SpeechSynthesisUtterance(text);
-    // prefer voice that matches target language if available
     const voices = speechSynthesis.getVoices();
     const match = voices.find(v => v.lang && v.lang.startsWith(targetLang));
     if (match) utter.voice = match;
     window.speechSynthesis.speak(utter);
   };
 
-  // load voices when available
   useEffect(() => {
-    const onVoicesChanged = () => {
-      // trigger a re-render so voices are available
-      setTimeout(() => {}, 0);
-    };
-    window.speechSynthesis.onvoiceschanged = onVoicesChanged;
+    window.speechSynthesis.onvoiceschanged = () => setTimeout(() => {}, 0);
   }, []);
 
   useEffect(() => {
-  const handler = setTimeout(() => {
-    if (inputText.trim().length > 0) {
-      handleTranslate(inputText);
-    }
-  }, 500);
-
-  return () => {
-    clearTimeout(handler);
-  };
-}, [inputText]);
+    const handler = setTimeout(() => {
+      if (inputText.trim().length > 0) {
+        handleTranslate();
+      }
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [inputText]);
 
   const swapLanguages = () => {
     setSourceLang(targetLang);
@@ -157,7 +170,7 @@ export default function AppTranslator() {
     try {
       await navigator.clipboard.writeText(translatedText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000); // Reset after 2s
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy:", err);
     }
@@ -170,16 +183,16 @@ export default function AppTranslator() {
           <h1 className="text-2xl font-semibold">App Translator</h1>
           <div className="flex gap-2 items-end">
             <div className="flex flex-col gap-y-2">
-              <label htmlFor="sourceLang" className="">Source language</label>
+              <label htmlFor="sourceLang">Source language</label>
               <select
                 value={sourceLang}
                 onChange={e => setSourceLang(e.target.value)}
                 className="border px-3 py-2 rounded-lg"
               >
-              {LANGUAGES.map(l => (
-                <option key={l.code} value={l.code}>{l.name}</option>
-              ))}
-            </select>
+                {LANGUAGES.map(l => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
             </div>
             <button
               onClick={swapLanguages}
@@ -188,19 +201,21 @@ export default function AppTranslator() {
               <FontAwesomeIcon icon={faArrowRightArrowLeft} size={"sm"} />
             </button>
             <div className="flex flex-col gap-y-2">
-              <label htmlFor="targetLang" className="">Target language</label>
+              <label htmlFor="targetLang">Target language</label>
               <select
-              value={targetLang}
-              onChange={e => setTargetLang(e.target.value)}
-              className="border px-3 py-2 rounded-lg"
-            >
-              {LANGUAGES.filter(l => l.code !== "auto").map(l => (
-                <option key={l.code} value={l.code}>{l.name}</option>
-              ))}
-            </select>
+                value={targetLang}
+                onChange={e => setTargetLang(e.target.value)}
+                className="border px-3 py-2 rounded-lg"
+              >
+                {LANGUAGES.filter(l => l.code !== "auto").map(l => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
             </div>
           </div>
+          <a href={audioUrl!} download="recording.webm">Download</a>
         </header>
+
         <main className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <section className="p-4 border rounded-lg">
             <div className="flex items-start justify-between mb-2">
@@ -219,47 +234,38 @@ export default function AppTranslator() {
               className="w-full p-3 border rounded-lg resize-none"
               placeholder="Type or record speech..."
             />
-
             <div className="mt-3 flex items-center gap-3">
               <button
                 onClick={recording ? stopRecording : startRecording}
                 className={clsx(
                   "w-10 h-10 rounded-full text-white",
                   recording ? 'bg-red-500' : 'bg-primary-600'
-                  )}
+                )}
               >
-                <FontAwesomeIcon icon={faMicrophone} className="text-md"/>
+                <FontAwesomeIcon icon={faMicrophone} className="text-md" />
               </button>
               <button
                 onClick={() => speakTranslation(inputText)}
                 disabled={inputText.trim().length === 0}
                 className="w-10 h-10 text-white rounded-full bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                <FontAwesomeIcon icon={faVolumeHigh} className="text-sm"/>
+                <FontAwesomeIcon icon={faVolumeHigh} className="text-sm" />
               </button>
               {loadingTranscribe && <span className="text-sm text-gray-500">Transcribing...</span>}
             </div>
           </section>
+
           <section className="p-4 border rounded-lg flex flex-col">
             <h2 className="font-medium">Translation</h2>
             <div className="flex-1 border rounded-lg overflow-y-auto p-4 mb-4">
-                {
-                  translatedText.trim().length === 0 ?
-                    <p className="text-slate-400">Translation will appear here</p>
-                    :
-                    <div className="flex items-baseline">
-                      <div>{translatedText}</div>
-                      {
-                        loadingTranslate && <div className="col-3 ml-3.5">
-                        <div className="snippet" data-title="dot-flashing">
-                          <div className="stage">
-                            <div className="dot-flashing"></div>
-                          </div>
-                        </div>
-                      </div>
-                      }
-                    </div>
-                }
+              {translatedText.trim().length === 0 ? (
+                <p className="text-slate-400">Translation will appear here</p>
+              ) : (
+                <div className="flex items-baseline">
+                  <div>{translatedText}</div>
+                  {loadingTranslate && <div className="ml-3 text-sm text-gray-500">Translating...</div>}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -267,22 +273,25 @@ export default function AppTranslator() {
                 disabled={translatedText.trim().length === 0}
                 className="w-10 h-10 text-white rounded-full bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                <FontAwesomeIcon icon={faVolumeHigh} className="text-sm"/>
+                <FontAwesomeIcon icon={faVolumeHigh} className="text-sm" />
               </button>
               <button
                 onClick={handleCopy}
-                className={clsx(
-                       "w-10 h-10 rounded-full bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed",
-                       copied && "bg-green-500"
-                  )}
                 disabled={translatedText.trim().length === 0}
-                >
-                  <FontAwesomeIcon icon={faCopy} className="text-sm text-white"/>
-                </button>
+                className={clsx(
+                  "w-10 h-10 rounded-full bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed",
+                  copied && "bg-green-500"
+                )}
+              >
+                <FontAwesomeIcon icon={faCopy} className="text-sm text-white" />
+              </button>
             </div>
           </section>
         </main>
-        <footer className="mt-6 text-xs text-gray-400">Tip: change languages and click Record to auto transcribe and translate.</footer>
+
+        <footer className="mt-6 text-xs text-gray-400">
+          Tip: change languages and click Record to auto transcribe and translate.
+        </footer>
       </div>
     </div>
   );
