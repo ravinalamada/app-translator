@@ -7,8 +7,7 @@
   width: 5px;
   height: 5px;
   border-radius: 100%;
-  background-color: #9880ff;
-  color: #9880ff;
+  background-color: black;
   animation: dot-flashing 1s infinite linear alternate;
   animation-delay: 0.5s;
 }
@@ -23,8 +22,7 @@
   width: 5px;
   height: 5px;
   border-radius: 100%;
-  background-color: #9880ff;
-  color: #9880ff;
+  background-color: black;
   animation: dot-flashing 1s infinite alternate;
   animation-delay: 0s;
 }
@@ -33,15 +31,14 @@
   width: 5px;
   height: 5px;
   border-radius: 100%;
-  background-color: #9880ff;
-  color: #9880ff;
+  background-color: black;
   animation: dot-flashing 1s infinite alternate;
   animation-delay: 1s;
 }
 
 @keyframes dot-flashing {
   0% {
-    background-color: #9880ff;
+    background-color: black;
   }
   50%, 100% {
     background-color: rgba(152, 128, 255, 0.2);
