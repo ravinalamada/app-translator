@@ -87,7 +87,7 @@ export function AppTranslator() {
       const formData = new FormData();
       formData.append("audio", audioBlob, "recording.wav");
       formData.append("sourceLang", sourceLang);
-      const res = await fetch("https://app-translator-71vf.onrender.com/backend/api/transcribe",
+      const res = await fetch("https://app-translator-71vf.onrender.com/api/transcribe",
         { method: "POST", body: formData });
       if (!res.ok) throw new Error("Transcription failed");
       setInputText((await res.json()).text || "");
