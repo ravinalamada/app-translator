@@ -4,6 +4,7 @@ backend/node_modules
 backend/uploads
 backend/venv
 backend/*.wav
+backend/.env
 # Node dependencies for frontend (if separate)
 node_modules/
 
