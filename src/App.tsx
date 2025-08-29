@@ -101,7 +101,7 @@ export function AppTranslator() {
   const handleTranslate = useCallback(async (text: string, source: string, target: string) => {
     setLoadingTranslate(true);
     try {
-      const { data } = await axios.request({
+      const {data}  = await axios.request({
         method: "POST",
         url: "https://deep-translate1.p.rapidapi.com/language/translate/v2",
         headers: {
