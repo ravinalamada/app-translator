@@ -1,77 +1,50 @@
 import express from "express";
-import { pipeline } from "@huggingface/transformers";
-import path from "path";
-import wavefile from "wavefile";
 import multer from "multer";
 import fs from "fs";
-import cors from 'cors';
+import { createClient } from "@deepgram/sdk";
+import dotenv from "dotenv";
+import cors from "cors";
+
+// Load environment variables from .env
+dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 const PORT = process.env.PORT || 5000;
 
-// Setup multer
-const storage = multer.diskStorage({
-  destination: "uploads/", // folder
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-    // Example: 1692984728472.wav
-  }
-});
+// Setup multer for file uploads
+const upload = multer({ dest: "uploads/" });
 
-const upload = multer({ storage });
+// Init Deepgram client
+const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
 
-// Load Whisper model once at startup
-let transcriber = await pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en");
-
-// Transcription endpoint
+// Transcribe endpoint
 app.post("/api/transcribe", upload.single("audio"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     const filePath = req.file.path;
+    const fileBuffer = fs.readFileSync(filePath);
 
-    // Load audio file buffer
-    const buffer = fs.readFileSync(filePath);
-    const wav = new wavefile.WaveFile(buffer);
+    const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
+      fileBuffer,
+      {
+        model: "nova-3",
+        language: "en",
+      }
+    );
 
-    // Downsample + reduce bit depth (saves memory)
-    wav.toBitDepth("16");
-    wav.toSampleRate(16000);
+    fs.unlinkSync(filePath); // cleanup uploaded file
 
-    // Always single channel
-    let audioData = wav.getSamples(true, Int16Array);
-
-    // Whisper models expect Float32Array
-    let float32Data = new Float32Array(audioData.length);
-    for (let i = 0; i < audioData.length; i++) {
-      float32Data[i] = audioData[i] / 32768; // normalize
+    if (error) {
+      return res.status(500).json({ error });
     }
-
-    // Process in chunks (30s per chunk = 480k samples)
-    const chunkSize = 16000 * 30;
-    const results = [];
-
-    for (let i = 0; i < float32Data.length; i += chunkSize) {
-      const chunk = float32Data.slice(i, i + chunkSize);
-      const output = await transcriber(chunk);
-      results.push(output.text);
-    }
-
-    res.json({ text: results.join(" ") });
-
-    // Clean up uploaded file
-    fs.unlinkSync(filePath);
-
+    res.json({ text: result.results.channels[0].alternatives[0].transcript });
   } catch (err) {
-    console.error("Error during transcription:", err);
+    console.error(err);
     res.status(500).json({ error: "Transcription failed" });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Whisper server running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
