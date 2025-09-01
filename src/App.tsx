@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { WaveFile } from "wavefile";
 import axios  from "axios";
 
+const deepgramAPIKey = import.meta.env.VITE_DEEPGRAM_API_KEY;
 const AUDIO_WEBM_TYPE = "audio/webm";
 const AUDIO_WAV_TYPE = "audio/wav";
 type Lang = { code: string; name: string };
@@ -90,7 +91,9 @@ export function AppTranslator() {
       const res = await fetch("https://app-translator-71vf.onrender.com/api/transcribe",
         { method: "POST", body: formData });
       if (!res.ok) throw new Error("Transcription failed");
-      setInputText((await res.json()).text || "");
+      const data = await res.json();
+
+      if (data.text) setInputText(data.text);
     } catch (err) {
       console.error("Transcribe failed:", err);
     } finally {
@@ -98,20 +101,27 @@ export function AppTranslator() {
     }
   };
 
-  const handleTranslate = useCallback(async (text: string, source: string, target: string) => {
+  const handleTranslate = useCallback(async (q: string, source: string, target: string) => {
     setLoadingTranslate(true);
+
+    const options = {
+      method: 'POST',
+      url: 'https://deep-translate1.p.rapidapi.com/language/translate/v2',
+      headers: {
+        'x-rapidapi-key': deepgramAPIKey,
+        'x-rapidapi-host': 'deep-translate1.p.rapidapi.com',
+        'Content-Type': 'application/json'
+      },
+      data: {
+        q,
+        source,
+        target
+      }
+    };
     try {
-      const {data}  = await axios.request({
-        method: "POST",
-        url: "https://deep-translate1.p.rapidapi.com/language/translate/v2",
-        headers: {
-          'x-rapidapi-key': '3b32a7b98emshc3d0253ff577b0ap1862f2jsn40d854776284',
-          'x-rapidapi-host': 'deep-translate1.p.rapidapi.com',
-          'Content-Type': 'application/json'
-        },
-        data: { q: text, source, target }
-      });
+      const {data: data} = await axios.request(options);
       setTranslatedText(data?.data?.translations?.translatedText?.[0] || "");
+
     } catch (err) {
       console.error("Translation failed:", err);
     } finally {

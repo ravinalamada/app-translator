@@ -29,9 +29,10 @@ app.post("/api/transcribe", upload.single("audio"), async (req, res) => {
 
     const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
       fileBuffer,
+      // STEP 3: Configure Deepgram options for audio analysis
       {
         model: "nova-3",
-        language: "en",
+        smart_format: true,
       }
     );
 
